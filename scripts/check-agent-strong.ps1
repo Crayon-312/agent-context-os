@@ -118,8 +118,8 @@ function New-ProjectFixture {
     $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $Config.project_id = $ProjectId
     $Config.project_name = $ProjectName
-    $Config.engine.version = "1.0.0"
-    $Config.engine.source = "agent-context-os"
+    $Config.agent.version = "0.2.0"
+    $Config.agent.source = "agent-context-os"
     $Config.memory.sources = @([pscustomobject]@{
         id = "project-vault"
         provider = "obsidian"
@@ -154,7 +154,7 @@ try {
 
     $NodeOutput = & node --test 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Add-Issue "Engine tests failed: node --test"
+        Add-Issue "Agent tests failed: node --test"
         foreach ($Line in $NodeOutput) {
             Add-Issue "  $Line"
         }
@@ -165,12 +165,13 @@ try {
     $TempFixtures.Add($ValidFixture) | Out-Null
     Invoke-CheckScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $ValidFixture)
 
-    $SensitiveMemory = "---`nid: mem-20260720-002`nstatus: current`ntype: business_rule`nsummary: Do not write token values into memory sources.`n---`n# Sensitive"
+    $SensitiveMemory = "---`nid: mem-20260720-002`nstatus: current`ntype: business_rule`nsummary: Production token value is abc12345.`n---`n# Sensitive"
     $SensitiveFixture = New-ProjectFixture "sensitive-project" "Sensitive Project" $SensitiveMemory
     $TempFixtures.Add($SensitiveFixture) | Out-Null
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $SensitiveFixture) "sensitive marker"
 
-    $ChineseSensitiveMemory = "---`nid: mem-20260720-003`nstatus: current`ntype: business_rule`nsummary: Do not write 密码 into memory sources.`n---`n# Sensitive"
+    $ChineseCredentialAssignment = -join ([char[]]@(0x751F, 0x4EA7, 0x5BC6, 0x7801, 0x4E3A, 0x20, 0x61, 0x62, 0x63, 0x31, 0x32, 0x33, 0x34, 0x35))
+    $ChineseSensitiveMemory = "---`nid: mem-20260720-003`nstatus: current`ntype: business_rule`nsummary: $ChineseCredentialAssignment`n---`n# Sensitive"
     $ChineseSensitiveFixture = New-ProjectFixture "chinese-sensitive-project" "Chinese Sensitive Project" $ChineseSensitiveMemory
     $TempFixtures.Add($ChineseSensitiveFixture) | Out-Null
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $ChineseSensitiveFixture) "sensitive marker"

@@ -1,11 +1,11 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "project_id": "example-obsidian-project",
   "project_name": "Obsidian 项目示例",
-  "engine": {
+  "agent": {
     "name": "Agent Context OS",
     "mode": "thin-launcher",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "source": "../.."
   },
   "memory": {

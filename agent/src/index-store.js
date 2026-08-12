@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { getMemorySources, resolveProjectPath } from "./config.js";
 import { readJsonlSource } from "./providers/jsonl.js";
 import { readObsidianSource } from "./providers/obsidian.js";
+import { AGENT_VERSION } from "./version.js";
 
 const PROVIDERS = {
   jsonl: readJsonlSource,
@@ -25,6 +27,9 @@ export async function validateProject(config, projectRoot) {
     const result = await reader(source, projectRoot);
     documents.push(...result.documents);
     issues.push(...result.issues);
+    if (result.documents.length === 0 && result.issues.length === 0) {
+      issues.push(`${source.id} did not produce any knowledge documents`);
+    }
     sources.push({ id: source.id, provider: source.provider, path: result.sourcePath, document_count: result.documents.length });
   }
 
@@ -33,16 +38,18 @@ export async function validateProject(config, projectRoot) {
     throw new Error(`memory source validation failed:\n- ${issues.join("\n- ")}`);
   }
 
-  return { documents, sources, indexPath };
+  const sourceHash = createSourceHash(documents, sources);
+  return { documents, sources, indexPath, sourceHash };
 }
 
 export async function buildIndex(config, projectRoot) {
-  const { documents, sources, indexPath } = await validateProject(config, projectRoot);
+  const { documents, sources, indexPath, sourceHash } = await validateProject(config, projectRoot);
   const index = {
     schema_version: 1,
-    engine_version: "0.1.0",
+    agent_version: AGENT_VERSION,
     project_id: config.project_id,
     built_at: new Date().toISOString(),
+    source_hash: sourceHash,
     sources,
     issues: [],
     documents
@@ -59,7 +66,7 @@ export async function buildIndex(config, projectRoot) {
   return { index, indexPath };
 }
 
-export async function loadIndex(config, projectRoot) {
+export async function loadIndex(config, projectRoot, options = {}) {
   const indexPath = getIndexPath(config, projectRoot);
   let index;
   try {
@@ -69,6 +76,7 @@ export async function loadIndex(config, projectRoot) {
     if (error instanceof SyntaxError) throw new Error(`local index is invalid: ${indexPath}`);
     throw error;
   }
+  validateIndex(index, config, options.sourceHash);
   return { index, indexPath };
 }
 
@@ -83,6 +91,54 @@ function assertUniqueIds(documents) {
     if (seen.has(document.id)) throw new Error(`duplicate memory document id: ${document.id}`);
     seen.add(document.id);
   }
+}
+
+function validateIndex(index, config, sourceHash) {
+  if (!index || typeof index !== "object" || Array.isArray(index)) throw new Error("local index root must be an object");
+  if (index.schema_version !== 1) throw new Error(`local index schema is unsupported: ${String(index.schema_version)}`);
+  if (index.agent_version !== AGENT_VERSION) {
+    throw new Error(`local index Agent version does not match; run 'index' again`);
+  }
+  if (index.project_id !== config.project_id) {
+    throw new Error(`local index belongs to project '${String(index.project_id)}', not '${config.project_id}'`);
+  }
+  if (!Array.isArray(index.documents) || !Array.isArray(index.sources)) {
+    throw new Error("local index is missing documents or sources");
+  }
+  if (typeof index.source_hash !== "string" || !/^[a-f0-9]{64}$/.test(index.source_hash)) {
+    throw new Error("local index source hash is invalid; run 'index' again");
+  }
+  for (const [position, document] of index.documents.entries()) {
+    validateIndexDocument(document, position);
+  }
+  assertUniqueIds(index.documents);
+  if (sourceHash && index.source_hash !== sourceHash) {
+    throw new Error("local index is stale; project knowledge changed, run 'index' again");
+  }
+}
+
+function validateIndexDocument(document, position) {
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    throw new Error(`local index document ${position} must be an object`);
+  }
+  for (const field of ["id", "source_id", "path", "title", "summary", "type", "status", "content"]) {
+    if (typeof document[field] !== "string" || document[field].trim() === "") {
+      throw new Error(`local index document ${position} has invalid '${field}'`);
+    }
+  }
+  for (const field of ["scope", "tags", "links"]) {
+    if (!Array.isArray(document[field]) || document[field].some((item) => typeof item !== "string")) {
+      throw new Error(`local index document ${position} has invalid '${field}'`);
+    }
+  }
+}
+
+function createSourceHash(documents, sources) {
+  const payload = {
+    sources: sources.map(({ id, provider, path, document_count }) => ({ id, provider, path, document_count })),
+    documents: documents.map(({ id, source_id, path, content_hash }) => ({ id, source_id, path, content_hash }))
+  };
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 async function assertIndexPathProtected(indexPath, projectRoot) {

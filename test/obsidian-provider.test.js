@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { readObsidianSource } from "../engine/src/providers/obsidian.js";
+import { readObsidianSource } from "../agent/src/providers/obsidian.js";
 
 test("reads Obsidian notes, links and tags while ignoring editor metadata", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-context-obsidian-"));
@@ -11,19 +11,19 @@ test("reads Obsidian notes, links and tags while ignoring editor metadata", asyn
   await mkdir(path.join(root, ".obsidian"));
   await mkdir(path.join(root, "architecture"));
   await writeFile(path.join(root, ".obsidian", "workspace.md"), "ignored", "utf8");
-  await writeFile(path.join(root, "architecture", "engine.md"), `---
-id: arch-engine
+  await writeFile(path.join(root, "architecture", "agent.md"), `---
+id: arch-agent
 type: architecture_rule
 status: current
-scope: [engine]
+scope: [agent]
 tags: [architecture]
-summary: The Engine owns context routing.
+summary: The Agent owns context routing.
 confidence: high
 last_verified: 2026-08-12
 ---
-# Engine Boundary
+# Agent Boundary
 
-The Engine reads [[Project Knowledge]] and returns evidence. #runtime
+The Agent reads [[Project Knowledge]] and returns evidence. #runtime
 `, "utf8");
 
   const result = await readObsidianSource({
@@ -35,10 +35,10 @@ The Engine reads [[Project Knowledge]] and returns evidence. #runtime
 
   assert.equal(result.issues.length, 0);
   assert.equal(result.documents.length, 1);
-  assert.equal(result.documents[0].id, "arch-engine");
+  assert.equal(result.documents[0].id, "arch-agent");
   assert.deepEqual(result.documents[0].links, ["Project Knowledge"]);
   assert.deepEqual(result.documents[0].tags, ["architecture", "runtime"]);
-  assert.equal(result.documents[0].path, "architecture/engine.md");
+  assert.equal(result.documents[0].path, "architecture/agent.md");
 });
 
 test("reports notes missing required frontmatter without indexing them", async (context) => {

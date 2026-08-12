@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
-import { validateProject } from "../engine/src/index-store.js";
+import { validateProject } from "../agent/src/index-store.js";
 
 const execFileAsync = promisify(execFile);
 

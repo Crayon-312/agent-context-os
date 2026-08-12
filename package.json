@@ -1,14 +1,14 @@
 {
   "name": "agent-context-os",
-  "version": "0.1.0",
-  "description": "Obsidian-backed context engine for AI-assisted development",
+  "version": "0.2.0",
+  "description": "Obsidian-backed Agent collaboration layer",
   "type": "module",
   "bin": {
-    "agent-context": "engine/bin/agent-context.js"
+    "agent-context": "agent/bin/agent-context.js"
   },
   "scripts": {
     "test": "node --test",
-    "check": "node --check engine/bin/agent-context.js && node --test"
+    "check": "node --check agent/bin/agent-context.js && node --test"
   },
   "engines": {
     "node": ">=20"

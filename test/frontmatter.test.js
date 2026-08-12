@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseMarkdown } from "../engine/src/frontmatter.js";
+import { parseMarkdown } from "../agent/src/frontmatter.js";
 
 test("parses supported frontmatter values and preserves body", () => {
   const markdown = `---

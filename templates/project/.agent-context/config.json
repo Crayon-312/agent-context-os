@@ -1,12 +1,12 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "project_id": "<项目ID>",
   "project_name": "<项目名>",
-  "engine": {
+  "agent": {
     "name": "Agent Context OS",
     "mode": "thin-launcher",
-    "version": "<引擎版本>",
-    "source": "<本机引擎路径或包名>"
+    "version": "<Agent 版本>",
+    "source": "<本机 Agent 路径或包名>"
   },
   "memory": {
     "sources": [

@@ -68,7 +68,7 @@ Agent 深读真实事实源
 }
 ```
 
-本地索引可以在此基础上增加 `vector`、`keywords`、`indexed_at`、`source_hash` 和 `engine_version` 等字段。
+本地索引可以在此基础上增加 `vector`、`keywords`、`indexed_at`、`source_hash` 和 `agent_version` 等字段。
 
 ## 检索策略
 
@@ -117,7 +117,7 @@ Agent 深读真实事实源
 
 ## 嵌入式与服务型
 
-默认推荐 Engine 内置的本地 JSON 索引，降低用户部署成本。知识采集和索引都通过 provider（提供器）边界访问：首版知识 provider 支持 `obsidian` 和 `jsonl`，后续可增加 SQLite、向量或团队服务型检索后端。
+默认推荐 Agent 内置的本地 JSON 索引，降低用户部署成本。知识采集和索引都通过 provider（提供器）边界访问：首版知识 provider 支持 `obsidian` 和 `jsonl`，后续可增加 SQLite、向量或团队服务型检索后端。
 
 无论底层是嵌入式还是服务型，团队共享事实都应以项目记忆源为准。
 

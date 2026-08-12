@@ -6,13 +6,13 @@
 
 ## 模块卡片
 
-每个关键模块应有清晰的边界记录。薄入口项目默认把模块边界沉淀为项目记忆源，而不是重新创建旧版协作引擎目录：
+每个关键模块应有清晰的边界记录。薄入口项目默认把模块边界沉淀为项目记忆源，而不是重新创建旧版 Agent 协作层目录：
 
 ```text
 .agent-context/memory-sources/memory-architecture.jsonl
 ```
 
-如果项目本身已经有架构文档，可以在记忆源的 `source.ref` 或 `evidence` 中指向真实文档路径。不要为了升级协作引擎而新建 `docs/agent/modules/`。
+如果项目本身已经有架构文档，可以在记忆源的 `source.ref` 或 `evidence` 中指向真实文档路径。不要为了升级 Agent 协作层而新建 `docs/agent/modules/`。
 
 模块边界记录应包含：
 

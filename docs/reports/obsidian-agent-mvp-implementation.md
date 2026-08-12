@@ -1,8 +1,8 @@
-# 开发实现说明：Obsidian 知识库协作引擎 MVP
+# 开发实现说明：Obsidian 知识库 + Agent 协作层 MVP
 
 ## 修改目标
 
-把现有协作蓝图推进为可运行的最小业务闭环：Engine 从配置指定的 Obsidian Vault 读取 Markdown 知识，生成本地索引，并按查询返回摘要和证据路径。
+把现有协作蓝图推进为可运行的最小业务闭环：Agent 从配置指定的 Obsidian Vault 读取 Markdown 知识，生成本地索引，并按查询返回摘要和证据路径。
 
 ## 非目标
 
@@ -12,9 +12,9 @@
 ## 变更等级与引用
 
 - 等级：`S3`
-- 方案：`plan-obsidian-engine-mvp`
-- 台账：`docs/plans/obsidian-engine-mvp.md`
-- 当前事实：现有代码只有蓝图、模板和检查脚本，没有 Engine 运行时或 Obsidian 适配。
+- 方案：`plan-obsidian-agent-mvp`
+- 台账：`docs/plans/obsidian-agent-mvp.md`
+- 当前事实：现有代码只有蓝图、模板和检查脚本，没有 Agent 运行时或 Obsidian 适配。
 
 ## 核心方案
 
@@ -40,7 +40,7 @@
 
 - 简化 YAML 解析只覆盖约定的 Frontmatter 子集；复杂 YAML 留待后续成熟解析器。
 - JSON 索引适合 MVP，不适合超大 Vault；provider 边界允许后续替换。
-- 回滚可删除新增 Engine 文件并恢复旧配置模板；本地索引本身可直接删除重建。
+- 回滚可删除新增 Agent 文件并恢复旧配置模板；本地索引本身可直接删除重建。
 
 ## 验证矩阵
 

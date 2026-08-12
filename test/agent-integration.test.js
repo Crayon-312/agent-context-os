@@ -3,20 +3,20 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { loadProjectConfig } from "../engine/src/config.js";
-import { buildIndex, loadIndex, validateProject } from "../engine/src/index-store.js";
-import { searchIndex } from "../engine/src/search.js";
+import { loadProjectConfig } from "../agent/src/config.js";
+import { buildIndex, loadIndex, validateProject } from "../agent/src/index-store.js";
+import { searchIndex } from "../agent/src/search.js";
 
 test("builds a local index and retrieves evidence from an Obsidian vault", async (context) => {
-  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-engine-"));
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-agent-"));
   context.after(() => rm(projectRoot, { recursive: true, force: true }));
   await mkdir(path.join(projectRoot, ".agent-context"));
   await mkdir(path.join(projectRoot, "knowledge"));
   await writeFile(path.join(projectRoot, ".agent-context", "config.json"), JSON.stringify({
-    schema_version: 2,
+    schema_version: 3,
     project_id: "test-project",
     project_name: "Test Project",
-    engine: { name: "Agent Context OS", mode: "thin-launcher", version: "0.1.0", source: "." },
+    agent: { name: "Agent Context OS", mode: "thin-launcher", version: "0.2.0", source: "." },
     memory: {
       sources: [{
         id: "project-vault",
@@ -127,4 +127,93 @@ test("validateProject rejects a missing Vault", async (context) => {
   };
 
   await assert.rejects(() => validateProject(config, projectRoot), /Obsidian vault not found/);
+});
+
+test("validateProject rejects an empty knowledge source", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-empty-vault-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  await mkdir(path.join(projectRoot, "knowledge"));
+  const config = {
+    project_id: "empty-vault",
+    memory: {
+      sources: [{ id: "vault", provider: "obsidian", path: "knowledge" }],
+      local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+    }
+  };
+
+  await assert.rejects(() => validateProject(config, projectRoot), /did not produce any knowledge documents/);
+});
+
+test("rejects invalid and sensitive legacy JSONL records", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-jsonl-schema-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  await mkdir(path.join(projectRoot, ".agent-context", "memory-sources"), { recursive: true });
+  await writeFile(path.join(projectRoot, ".agent-context", "memory-sources", "memory-invalid.jsonl"), [
+    JSON.stringify({ id: "invalid", type: "invented", status: "confirmed", summary: "" }),
+    JSON.stringify({ id: "sensitive", type: "decision", status: "current", summary: "Production token value is abc123" })
+  ].join("\n"), "utf8");
+  const config = {
+    project_id: "jsonl-schema",
+    memory: {
+      source_paths: [".agent-context/memory-sources/memory-*.jsonl"],
+      local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+    }
+  };
+
+  await assert.rejects(
+    () => buildIndex(config, projectRoot),
+    (error) => error.message.includes("unsupported value 'invented'") && error.message.includes("sensitive marker")
+  );
+});
+
+test("allows knowledge about Token cost without treating it as a credential", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-token-cost-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  await mkdir(path.join(projectRoot, ".agent-context", "memory-sources"), { recursive: true });
+  await writeFile(path.join(projectRoot, ".agent-context", "memory-sources", "memory-cost.jsonl"),
+    '{"id":"token-cost","type":"architecture_rule","status":"current","summary":"Control Token cost by loading context on demand."}\n', "utf8");
+  const config = {
+    project_id: "token-cost",
+    memory: {
+      source_paths: [".agent-context/memory-sources/memory-*.jsonl"],
+      local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+    }
+  };
+
+  const built = await buildIndex(config, projectRoot);
+  assert.equal(built.index.documents[0].id, "token-cost");
+});
+
+test("rejects an index from another project, Agent version or changed source", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-index-contract-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  await mkdir(path.join(projectRoot, ".agent-context", "memory-sources"), { recursive: true });
+  const memoryPath = path.join(projectRoot, ".agent-context", "memory-sources", "memory-one.jsonl");
+  await writeFile(memoryPath,
+    '{"id":"one","type":"decision","status":"current","summary":"First fact."}\n', "utf8");
+  const memory = {
+    source_paths: [".agent-context/memory-sources/memory-*.jsonl"],
+    local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+  };
+  const config = { project_id: "project-one", memory };
+  const built = await buildIndex(config, projectRoot);
+
+  await assert.rejects(() => loadIndex({ project_id: "project-two", memory }, projectRoot), /belongs to project/);
+
+  const wrongVersion = { ...built.index, agent_version: "999.0.0" };
+  await writeFile(built.indexPath, JSON.stringify(wrongVersion), "utf8");
+  await assert.rejects(() => loadIndex(config, projectRoot), /Agent version does not match/);
+
+  await writeFile(built.indexPath, JSON.stringify(built.index), "utf8");
+  await writeFile(memoryPath,
+    '{"id":"two","type":"decision","status":"current","summary":"Replacement fact."}\n', "utf8");
+  const validation = await validateProject(config, projectRoot);
+  await assert.rejects(
+    () => loadIndex(config, projectRoot, { sourceHash: validation.sourceHash }),
+    /local index is stale/
+  );
+
+  const invalidDocument = { ...built.index, documents: [{ id: "broken" }] };
+  await writeFile(built.indexPath, JSON.stringify(invalidDocument), "utf8");
+  await assert.rejects(() => loadIndex(config, projectRoot), /local index document 0 has invalid 'source_id'/);
 });

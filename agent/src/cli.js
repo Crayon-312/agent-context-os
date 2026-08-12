@@ -3,7 +3,7 @@ import { loadProjectConfig } from "./config.js";
 import { buildIndex, loadIndex, validateProject } from "./index-store.js";
 import { searchIndex } from "./search.js";
 
-const HELP = `Agent Context OS Engine\n\nUsage:\n  agent-context validate [--project <path>] [--json]\n  agent-context index [--project <path>] [--json]\n  agent-context search <query> [--project <path>] [--limit <n>] [--type <type>] [--status <status>] [--json]\n`;
+const HELP = `Agent Context OS\n\nUsage:\n  agent-context validate [--project <path>] [--json]\n  agent-context index [--project <path>] [--json]\n  agent-context search <query> [--project <path>] [--limit <n>] [--type <type>] [--status <status>] [--json]\n`;
 
 export async function runCli(argv, io = defaultIo()) {
   const { command, positionals, options } = parseArguments(argv);
@@ -45,9 +45,11 @@ export async function runCli(argv, io = defaultIo()) {
 
   if (command === "search") {
     const query = positionals.join(" ").trim();
-    const { index } = await loadIndex(config, resolvedRoot);
+    const limit = parseLimit(options.limit);
+    const validation = await validateProject(config, resolvedRoot);
+    const { index } = await loadIndex(config, resolvedRoot, { sourceHash: validation.sourceHash });
     const results = searchIndex(index, query, {
-      limit: options.limit ? Number.parseInt(options.limit, 10) : undefined,
+      limit,
       type: options.type,
       status: options.status
     });
@@ -64,6 +66,14 @@ export async function runCli(argv, io = defaultIo()) {
   }
 
   throw new Error(`unknown command '${command}'\n\n${HELP}`);
+}
+
+function parseLimit(value) {
+  if (value === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(value)) throw new Error("--limit must be a positive integer");
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit)) throw new Error("--limit is too large");
+  return limit;
 }
 
 function parseArguments(argv) {

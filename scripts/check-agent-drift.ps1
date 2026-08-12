@@ -27,7 +27,7 @@ if (-not (Test-Path -LiteralPath $AgentDir -PathType Container)) {
             exit 1
         }
 
-        Write-Host "Agent drift check skipped: thin-launcher project passed project check; runtime drift is enforced by current engine."
+        Write-Host "Agent drift check skipped: thin-launcher project passed project check; runtime drift is enforced by current agent."
         exit 0
     }
 

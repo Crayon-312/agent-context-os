@@ -25,7 +25,7 @@ export async function loadProjectConfig(projectRoot) {
     throw new Error(`invalid configuration:\n- ${issues.join("\n- ")}`);
   }
 
-  return { config, configPath, projectRoot: root };
+  return { config: normalizeConfig(config), configPath, projectRoot: root };
 }
 
 export function validateConfig(config) {
@@ -34,21 +34,25 @@ export function validateConfig(config) {
     return ["root must be an object"];
   }
 
-  if (!Number.isInteger(config.schema_version) || ![1, 2].includes(config.schema_version)) {
-    issues.push("schema_version must be 1 or 2");
+  if (!Number.isInteger(config.schema_version) || ![1, 2, 3].includes(config.schema_version)) {
+    issues.push("schema_version must be 1, 2 or 3");
   }
   for (const field of ["project_id", "project_name"]) {
     if (!isNonEmptyString(config[field])) issues.push(`${field} must be a non-empty string`);
   }
 
-  if (!isObject(config.engine)) {
-    issues.push("engine must be an object");
+  const descriptorName = config.schema_version === 3 ? "agent" : "engine";
+  const descriptor = config[descriptorName];
+  if (!isObject(descriptor)) {
+    issues.push(`${descriptorName} must be an object`);
   } else {
     for (const field of ["name", "mode", "version", "source"]) {
-      if (!isNonEmptyString(config.engine[field])) issues.push(`engine.${field} must be a non-empty string`);
+      if (!isNonEmptyString(descriptor[field])) issues.push(`${descriptorName}.${field} must be a non-empty string`);
     }
-    if (config.engine.mode !== "thin-launcher") issues.push("engine.mode must be 'thin-launcher'");
+    if (descriptor.mode !== "thin-launcher") issues.push(`${descriptorName}.mode must be 'thin-launcher'`);
   }
+  if (config.schema_version === 3 && config.engine !== undefined) issues.push("schema_version 3 must use 'agent', not 'engine'");
+  if ([1, 2].includes(config.schema_version) && config.agent !== undefined) issues.push("schema_version 1/2 must use legacy 'engine'");
 
   if (!isObject(config.memory)) {
     issues.push("memory must be an object");
@@ -127,6 +131,12 @@ export function getMemorySources(config) {
 
 export function resolveProjectPath(projectRoot, targetPath) {
   return path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(projectRoot, targetPath);
+}
+
+function normalizeConfig(config) {
+  if (config.schema_version === 3) return config;
+  const { engine, ...rest } = config;
+  return { ...rest, agent: engine };
 }
 
 function isObject(value) {

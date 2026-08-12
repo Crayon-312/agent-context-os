@@ -1,5 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
+import { validateMemoryRecord } from "../memory-schema.js";
 
 export async function readJsonlSource(source, projectRoot) {
   const documents = [];
@@ -16,22 +18,27 @@ export async function readJsonlSource(source, projectRoot) {
       if (!line.trim()) continue;
       try {
         const record = JSON.parse(line);
+        const recordIssues = validateMemoryRecord(record);
+        if (recordIssues.length > 0) {
+          issues.push(...recordIssues.map((issue) => `${source.id}:${relativePath}:${index + 1} ${issue}`));
+          continue;
+        }
         documents.push({
-          id: record.id ?? `${source.id}:${relativePath}:${index + 1}`,
+          id: record.id,
           source_id: source.id,
           provider: "jsonl",
           path: relativePath,
-          title: record.summary ?? record.id ?? `line ${index + 1}`,
-          summary: record.summary ?? "",
-          type: record.type ?? "note",
-          status: record.status ?? "current",
+          title: record.title ?? record.summary,
+          summary: record.summary,
+          type: record.type,
+          status: record.status,
           scope: record.scope ?? [],
           tags: record.tags ?? [],
           links: [],
           confidence: record.confidence ?? null,
           last_verified: record.last_verified ?? null,
           content: JSON.stringify(record),
-          content_hash: null
+          content_hash: createHash("sha256").update(line).digest("hex")
         });
       } catch (error) {
         issues.push(`${source.id}:${relativePath}:${index + 1} invalid JSON: ${error.message}`);

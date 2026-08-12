@@ -1,8 +1,8 @@
-# Obsidian 协作引擎运行时
+# Obsidian Agent 协作层运行时
 
 ## 定位
 
-Engine 是 Obsidian 项目知识库与 Agent 协作流程之间的运行层。首版提供可执行的最小闭环，而不是替代 Obsidian 编辑体验或实现完整知识管理平台。
+Agent 是 Obsidian 项目知识库与 Agent 协作流程之间的运行层。首版提供可执行的最小闭环，而不是替代 Obsidian 编辑体验或实现完整知识管理平台。
 
 ## 运行要求
 
@@ -14,9 +14,9 @@ Engine 是 Obsidian 项目知识库与 Agent 协作流程之间的运行层。�
 ## 命令
 
 ```powershell
-node <Engine路径>/engine/bin/agent-context.js validate --project <项目路径>
-node <Engine路径>/engine/bin/agent-context.js index --project <项目路径>
-node <Engine路径>/engine/bin/agent-context.js search "<查询>" --project <项目路径>
+node <Agent路径>/agent/bin/agent-context.js validate --project <项目路径>
+node <Agent路径>/agent/bin/agent-context.js index --project <项目路径>
+node <Agent路径>/agent/bin/agent-context.js search "<查询>" --project <项目路径>
 ```
 
 所有命令支持 `--json` 输出结构化结果。`validate` 会实际读取并校验所有知识源及索引路径，但不会写入索引；`search` 还支持 `--limit`、`--type` 和 `--status` 过滤。
@@ -25,6 +25,15 @@ node <Engine路径>/engine/bin/agent-context.js search "<查询>" --project <项
 
 ```json
 {
+  "schema_version": 3,
+  "project_id": "<项目 ID>",
+  "project_name": "<项目名>",
+  "agent": {
+    "name": "Agent Context OS",
+    "mode": "thin-launcher",
+    "version": "0.2.0",
+    "source": "<本机 Agent 路径或包名>"
+  },
   "memory": {
     "sources": [
       {
@@ -43,7 +52,9 @@ node <Engine路径>/engine/bin/agent-context.js search "<查询>" --project <项
 }
 ```
 
-`path` 相对路径以用户项目根目录为基准，也允许绝对路径。Engine 兼容旧 `memory.source_paths`，但新项目应使用 `memory.sources[]`。`id`、`type`、`status` 和 `summary` 是不可取消的核心必填字段，`required_frontmatter` 只能追加其他必填字段。
+schema 3 使用 `agent` 描述当前协作层。schema 1/2 的 `engine` 字段仅用于读取旧配置，加载后会归一化为 `agent`；新配置不得继续使用旧字段。
+
+`path` 相对路径以用户项目根目录为基准，也允许绝对路径。Agent 兼容旧 `memory.source_paths`，但新项目应使用 `memory.sources[]`。`id`、`type`、`status` 和 `summary` 是不可取消的核心必填字段，`required_frontmatter` 只能追加其他必填字段。每个已配置来源至少要产出一份有效知识，否则校验失败。
 
 ## Obsidian 知识契约
 
@@ -62,11 +73,11 @@ last_verified: YYYY-MM-DD
 ---
 ```
 
-Engine 会忽略 `.obsidian`、`.git`、`.trash` 和配置中的排除目录，读取正文标题、标签及 `[[双向链接]]`，并把知识规范化为本地索引记录。
+Agent 会忽略 `.obsidian`、`.git`、`.trash` 和配置中的排除目录，读取正文标题、标签及 `[[双向链接]]`，并把知识规范化为本地索引记录。
 
 ## 安全和事实边界
 
-- Engine 对 Vault 只读，不自动创建或修改 Markdown。
+- Agent 对 Vault 只读，不自动创建或修改 Markdown。
 - 本地索引必须被 Git 排除，可随时删除重建。
 - 仓库内索引路径必须真实命中 Git ignore 规则且不得是已跟踪文件；仓库外路径可作为本机缓存。
 - 不得把账号、密钥、token、cookie 或真实隐私数据写入 Vault 或索引。
@@ -76,6 +87,6 @@ Engine 会忽略 `.obsidian`、`.git`、`.trash` 和配置中的排除目录，�
 
 ## 当前限制
 
-- Frontmatter 只支持引擎约定的 YAML 子集，包括标量、行内数组和简单列表。
+- Frontmatter 只支持 Agent 协作层约定的 YAML 子集，包括标量、行内数组和简单列表。
 - 当前索引为 JSON 文件和关键词加权检索，适合 MVP 和中小型 Vault。
 - 尚未实现增量索引、SQLite 全文检索、向量检索、知识写回、Obsidian 插件和团队权限服务。

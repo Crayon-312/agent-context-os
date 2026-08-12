@@ -6,16 +6,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Issues = New-Object System.Collections.Generic.List[string]
-$SensitivePatterns = @(
-    "(?i)\b(api[_-]?key|token|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd|credential|private[_-]?key|cookie|session[_-]?id)\b",
-    "账号",
-    "密码",
-    "密钥",
-    "凭据",
-    "私钥",
-    "访问令牌",
-    "刷新令牌",
-    "真实隐私"
+$SensitiveFieldNames = @(
+    "api_key", "apikey", "token", "access_token", "refresh_token", "secret", "password",
+    "passwd", "pwd", "credential", "credentials", "private_key", "cookie", "session_id"
+)
+$SensitiveValuePatterns = @(
+    '(?i)\b(api[_-]?key|token|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd|credential|private[_-]?key|cookie|session[_-]?id)\b\s*((value\s*)?(is|=|:))\s*["'']?(?![<*]|redacted\b|example\b)[^\s,"''}]{4,}',
+    "(\u8D26\u53F7|\u5BC6\u7801|\u5BC6\u94A5|\u51ED\u636E|\u79C1\u94A5|\u8BBF\u95EE\u4EE4\u724C|\u5237\u65B0\u4EE4\u724C)\s*(\u662F|\u4E3A|=|\uFF1A|:)\s*\S{4,}",
+    "-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
+    "(?i)\bBearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}\b",
+    "\b(sk|ghp|github_pat)_[A-Za-z0-9_-]{8,}\b"
 )
 
 function Add-Issue {
@@ -111,7 +111,7 @@ function Test-NoSensitiveText {
         return
     }
 
-    foreach ($Pattern in $SensitivePatterns) {
+    foreach ($Pattern in $SensitiveValuePatterns) {
         if ($Value -match $Pattern) {
             Add-Issue "$Field contains sensitive marker '$($Matches[0])'"
             return
@@ -143,6 +143,10 @@ function Test-NoSensitiveObject {
 
     if ($Value -is [System.Management.Automation.PSCustomObject]) {
         foreach ($Property in $Value.PSObject.Properties) {
+            if ($SensitiveFieldNames -contains $Property.Name.ToLowerInvariant()) {
+                Add-Issue "$Field contains sensitive field '$($Property.Name)'"
+                continue
+            }
             Test-NoSensitiveObject $Property.Value "$Field.$($Property.Name)"
         }
     }
@@ -446,34 +450,53 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
     }
 
     if ($null -ne $Config) {
-        foreach ($Field in @("schema_version", "project_id", "project_name", "engine", "memory", "quality")) {
+        foreach ($Field in @("schema_version", "project_id", "project_name", "memory", "quality")) {
             if (-not ($Config.PSObject.Properties.Name -contains $Field)) {
                 Add-Issue ".agent-context/config.json missing field '$Field'"
             }
         }
 
-        if ($Config.schema_version -notin @(1, 2)) {
-            Add-Issue "schema_version must be 1 or 2"
+        if ($Config.schema_version -notin @(1, 2, 3)) {
+            Add-Issue "schema_version must be 1, 2 or 3"
         }
 
         Test-NonPlaceholder ([string]$Config.project_id) "project_id"
         Test-NonPlaceholder ([string]$Config.project_name) "project_name"
 
-        if ($Config.engine) {
+        $AgentConfig = $null
+        $AgentField = "agent"
+        if ($Config.schema_version -eq 3) {
+            if (-not ($Config.PSObject.Properties.Name -contains "agent")) {
+                Add-Issue ".agent-context/config.json missing field 'agent'"
+            }
+            if ($Config.PSObject.Properties.Name -contains "engine") {
+                Add-Issue "schema_version 3 must use 'agent', not 'engine'"
+            }
+            $AgentConfig = $Config.agent
+        }
+        else {
+            $AgentField = "engine"
+            if (-not ($Config.PSObject.Properties.Name -contains "engine")) {
+                Add-Issue ".agent-context/config.json missing legacy field 'engine'"
+            }
+            $AgentConfig = $Config.engine
+        }
+
+        if ($AgentConfig) {
             foreach ($Field in @("name", "mode", "version", "source")) {
-                if (-not ($Config.engine.PSObject.Properties.Name -contains $Field)) {
-                    Add-Issue ".agent-context/config.json engine missing field '$Field'"
+                if (-not ($AgentConfig.PSObject.Properties.Name -contains $Field)) {
+                    Add-Issue ".agent-context/config.json $AgentField missing field '$Field'"
                 }
             }
 
-            if ($Config.engine.mode -ne "thin-launcher") {
-                Add-Issue "engine.mode must be 'thin-launcher'"
+            if ($AgentConfig.mode -ne "thin-launcher") {
+                Add-Issue "$AgentField.mode must be 'thin-launcher'"
             }
 
-            Test-NonPlaceholder ([string]$Config.engine.name) "engine.name"
-            Test-NonPlaceholder ([string]$Config.engine.mode) "engine.mode"
-            Test-NonPlaceholder ([string]$Config.engine.version) "engine.version"
-            Test-NonPlaceholder ([string]$Config.engine.source) "engine.source"
+            Test-NonPlaceholder ([string]$AgentConfig.name) "$AgentField.name"
+            Test-NonPlaceholder ([string]$AgentConfig.mode) "$AgentField.mode"
+            Test-NonPlaceholder ([string]$AgentConfig.version) "$AgentField.version"
+            Test-NonPlaceholder ([string]$AgentConfig.source) "$AgentField.source"
         }
 
         if ($Config.memory) {
