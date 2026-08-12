@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { loadProjectConfig } from "../engine/src/config.js";
-import { buildIndex, loadIndex } from "../engine/src/index-store.js";
+import { buildIndex, loadIndex, validateProject } from "../engine/src/index-store.js";
 import { searchIndex } from "../engine/src/search.js";
 
 test("builds a local index and retrieves evidence from an Obsidian vault", async (context) => {
@@ -92,4 +92,39 @@ test("indexes legacy JSONL source path wildcards", async (context) => {
   assert.equal(built.index.documents.length, 1);
   assert.equal(built.index.documents[0].id, "legacy-one");
   assert.equal(built.index.documents[0].path, ".agent-context/memory-sources/memory-one.jsonl");
+});
+
+test("rejects source issues without replacing an existing index", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-preserve-index-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  await mkdir(path.join(projectRoot, ".agent-context", "local-index"), { recursive: true });
+  await mkdir(path.join(projectRoot, "knowledge"));
+  const indexPath = path.join(projectRoot, ".agent-context", "local-index", "index.json");
+  const previousIndex = '{"documents":[{"id":"known-good"}]}\n';
+  await writeFile(indexPath, previousIndex, "utf8");
+  await writeFile(path.join(projectRoot, "knowledge", "invalid.md"), "# Missing metadata\n", "utf8");
+  const config = {
+    project_id: "preserve-index",
+    memory: {
+      sources: [{ id: "vault", provider: "obsidian", path: "knowledge" }],
+      local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+    }
+  };
+
+  await assert.rejects(() => buildIndex(config, projectRoot), /memory source validation failed/);
+  assert.equal(await readFile(indexPath, "utf8"), previousIndex);
+});
+
+test("validateProject rejects a missing Vault", async (context) => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), "agent-context-missing-vault-"));
+  context.after(() => rm(projectRoot, { recursive: true, force: true }));
+  const config = {
+    project_id: "missing-vault",
+    memory: {
+      sources: [{ id: "vault", provider: "obsidian", path: "missing" }],
+      local_index: { provider: "embedded-json", path: ".agent-context/local-index", git_tracked: false }
+    }
+  };
+
+  await assert.rejects(() => validateProject(config, projectRoot), /Obsidian vault not found/);
 });

@@ -54,5 +54,42 @@ test("reports notes missing required frontmatter without indexing them", async (
   }, root);
 
   assert.equal(result.documents.length, 0);
-  assert.deepEqual(result.issues, ["project-vault:note.md missing frontmatter: id, type"]);
+  assert.deepEqual(result.issues, [
+    "project-vault:note.md frontmatter 'id' must be a non-empty string",
+    "project-vault:note.md frontmatter 'type' must be a non-empty string",
+    "project-vault:note.md frontmatter 'status' must be a non-empty string",
+    "project-vault:note.md frontmatter 'summary' must be a non-empty string"
+  ]);
+});
+
+test("rejects empty and invalid knowledge metadata instead of applying defaults", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-context-obsidian-schema-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(path.join(root, "invalid.md"), `---
+id: ""
+type: unsupported_type
+status: ""
+summary: []
+scope: module
+confidence: certain
+last_verified: 2026-02-30
+---
+# Invalid metadata
+`, "utf8");
+
+  const result = await readObsidianSource({
+    id: "project-vault",
+    provider: "obsidian",
+    path: root,
+    required_frontmatter: ["id", "type", "status", "summary"]
+  }, root);
+
+  assert.equal(result.documents.length, 0);
+  assert.ok(result.issues.some((issue) => issue.includes("'id' must be a non-empty string")));
+  assert.ok(result.issues.some((issue) => issue.includes("'type' has unsupported value")));
+  assert.ok(result.issues.some((issue) => issue.includes("'status' must be a non-empty string")));
+  assert.ok(result.issues.some((issue) => issue.includes("'summary' must be a non-empty string")));
+  assert.ok(result.issues.some((issue) => issue.includes("'scope' must be a non-empty array")));
+  assert.ok(result.issues.some((issue) => issue.includes("'confidence' has unsupported value")));
+  assert.ok(result.issues.some((issue) => issue.includes("'last_verified' must be a valid YYYY-MM-DD date")));
 });

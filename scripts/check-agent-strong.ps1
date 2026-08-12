@@ -174,6 +174,11 @@ try {
     $ChineseSensitiveFixture = New-ProjectFixture "chinese-sensitive-project" "Chinese Sensitive Project" $ChineseSensitiveMemory
     $TempFixtures.Add($ChineseSensitiveFixture) | Out-Null
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $ChineseSensitiveFixture) "sensitive marker"
+
+    $InvalidMetadata = "---`nid: mem-20260720-004`nstatus: confirmed`ntype: invented_type`nsummary: Invalid metadata must fail.`n---`n# Invalid"
+    $InvalidMetadataFixture = New-ProjectFixture "invalid-metadata-project" "Invalid Metadata Project" $InvalidMetadata
+    $TempFixtures.Add($InvalidMetadataFixture) | Out-Null
+    Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $InvalidMetadataFixture) "invalid status"
 }
 finally {
     Pop-Location

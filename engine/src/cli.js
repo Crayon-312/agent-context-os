@@ -1,6 +1,6 @@
 import process from "node:process";
-import { getMemorySources, loadProjectConfig } from "./config.js";
-import { buildIndex, loadIndex } from "./index-store.js";
+import { loadProjectConfig } from "./config.js";
+import { buildIndex, loadIndex, validateProject } from "./index-store.js";
 import { searchIndex } from "./search.js";
 
 const HELP = `Agent Context OS Engine\n\nUsage:\n  agent-context validate [--project <path>] [--json]\n  agent-context index [--project <path>] [--json]\n  agent-context search <query> [--project <path>] [--limit <n>] [--type <type>] [--status <status>] [--json]\n`;
@@ -16,13 +16,17 @@ export async function runCli(argv, io = defaultIo()) {
   const { config, configPath, projectRoot: resolvedRoot } = await loadProjectConfig(projectRoot);
 
   if (command === "validate") {
+    const validation = await validateProject(config, resolvedRoot);
     const result = {
       valid: true,
       project_id: config.project_id,
       config_path: configPath,
-      sources: getMemorySources(config).map(({ id, provider, path }) => ({ id, provider, path }))
+      documents: validation.documents.length,
+      index_path: validation.indexPath,
+      sources: validation.sources
     };
-    printResult(result, options.json, io, `Configuration valid: ${config.project_id}\nSources: ${result.sources.length}`);
+    printResult(result, options.json, io,
+      `Project context valid: ${config.project_id}\nSources: ${result.sources.length}\nDocuments: ${result.documents}`);
     return 0;
   }
 

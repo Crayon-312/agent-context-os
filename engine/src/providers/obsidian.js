@@ -4,6 +4,19 @@ import path from "node:path";
 import { parseMarkdown } from "../frontmatter.js";
 
 const DEFAULT_EXCLUDES = [".obsidian", ".git", ".trash"];
+const DEFAULT_REQUIRED_FRONTMATTER = ["id", "type", "status", "summary"];
+const MEMORY_TYPES = new Set([
+  "project_fact",
+  "business_rule",
+  "interaction_rule",
+  "architecture_rule",
+  "implementation_note",
+  "known_issue",
+  "decision",
+  "open_question"
+]);
+const MEMORY_STATUSES = new Set(["current", "draft", "assumption", "stale", "deprecated"]);
+const CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
 
 export async function readObsidianSource(source, projectRoot) {
   const vaultPath = path.isAbsolute(source.path) ? path.normalize(source.path) : path.resolve(projectRoot, source.path);
@@ -21,9 +34,10 @@ export async function readObsidianSource(source, projectRoot) {
     const relativePath = normalizePath(path.relative(vaultPath, filePath));
     const markdown = await readFile(filePath, "utf8");
     const { attributes, body } = parseMarkdown(markdown);
-    const missing = (source.required_frontmatter ?? []).filter((field) => attributes[field] === undefined);
-    if (missing.length > 0) {
-      issues.push(`${source.id}:${relativePath} missing frontmatter: ${missing.join(", ")}`);
+    const requiredFields = unique([...DEFAULT_REQUIRED_FRONTMATTER, ...(source.required_frontmatter ?? [])]);
+    const documentIssues = validateAttributes(attributes, requiredFields);
+    if (documentIssues.length > 0) {
+      issues.push(...documentIssues.map((issue) => `${source.id}:${relativePath} ${issue}`));
       continue;
     }
 
@@ -52,8 +66,8 @@ function toDocument(source, relativePath, markdown, attributes, body) {
   const title = stringValue(attributes.title) || firstHeading(body) || path.basename(relativePath, path.extname(relativePath));
   const tags = unique([...arrayValue(attributes.tags), ...extractInlineTags(body)]);
   const links = unique(extractWikiLinks(body));
-  const summary = stringValue(attributes.summary) || firstParagraph(body);
-  const id = stringValue(attributes.id) || `${source.id}:${relativePath}`;
+  const summary = stringValue(attributes.summary);
+  const id = stringValue(attributes.id);
 
   return {
     id,
@@ -62,8 +76,8 @@ function toDocument(source, relativePath, markdown, attributes, body) {
     path: relativePath,
     title,
     summary,
-    type: stringValue(attributes.type) || "note",
-    status: stringValue(attributes.status) || "current",
+    type: stringValue(attributes.type),
+    status: stringValue(attributes.status),
     scope: arrayValue(attributes.scope),
     tags,
     links,
@@ -111,4 +125,45 @@ function unique(values) {
 
 function normalizePath(value) {
   return value.split(path.sep).join("/");
+}
+
+function validateAttributes(attributes, requiredFields) {
+  const issues = [];
+  for (const field of requiredFields) {
+    if (!isNonEmptyString(attributes[field])) issues.push(`frontmatter '${field}' must be a non-empty string`);
+  }
+
+  validateEnum(attributes.type, "type", MEMORY_TYPES, issues);
+  validateEnum(attributes.status, "status", MEMORY_STATUSES, issues);
+  if (attributes.confidence !== undefined) validateEnum(attributes.confidence, "confidence", CONFIDENCE_LEVELS, issues);
+  if (attributes.last_verified !== undefined && !isValidDate(attributes.last_verified)) {
+    issues.push("frontmatter 'last_verified' must be a valid YYYY-MM-DD date");
+  }
+  for (const field of ["scope", "tags"]) {
+    if (attributes[field] !== undefined &&
+        (!Array.isArray(attributes[field]) || attributes[field].length === 0 ||
+         attributes[field].some((item) => !isNonEmptyString(item)))) {
+      issues.push(`frontmatter '${field}' must be a non-empty array of non-empty strings`);
+    }
+  }
+  if (attributes.title !== undefined && !isNonEmptyString(attributes.title)) {
+    issues.push("frontmatter 'title' must be a non-empty string");
+  }
+  return issues;
+}
+
+function validateEnum(value, field, allowed, issues) {
+  if (value !== undefined && (!isNonEmptyString(value) || !allowed.has(value))) {
+    issues.push(`frontmatter '${field}' has unsupported value '${String(value)}'`);
+  }
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function isValidDate(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
 }

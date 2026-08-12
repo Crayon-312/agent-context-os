@@ -34,32 +34,55 @@ export function validateConfig(config) {
     return ["root must be an object"];
   }
 
-  for (const field of ["schema_version", "project_id", "project_name", "engine", "memory"]) {
-    if (config[field] === undefined || config[field] === null || config[field] === "") {
-      issues.push(`missing field '${field}'`);
+  if (!Number.isInteger(config.schema_version) || ![1, 2].includes(config.schema_version)) {
+    issues.push("schema_version must be 1 or 2");
+  }
+  for (const field of ["project_id", "project_name"]) {
+    if (!isNonEmptyString(config[field])) issues.push(`${field} must be a non-empty string`);
+  }
+
+  if (!isObject(config.engine)) {
+    issues.push("engine must be an object");
+  } else {
+    for (const field of ["name", "mode", "version", "source"]) {
+      if (!isNonEmptyString(config.engine[field])) issues.push(`engine.${field} must be a non-empty string`);
     }
+    if (config.engine.mode !== "thin-launcher") issues.push("engine.mode must be 'thin-launcher'");
   }
 
-  if (config.engine?.mode !== "thin-launcher") {
-    issues.push("engine.mode must be 'thin-launcher'");
+  if (!isObject(config.memory)) {
+    issues.push("memory must be an object");
+    return issues;
   }
-
   const sources = config.memory?.sources;
   const legacyPaths = config.memory?.source_paths;
+  if (sources !== undefined && !Array.isArray(sources)) {
+    issues.push("memory.sources must be an array");
+  }
+  if (legacyPaths !== undefined && !Array.isArray(legacyPaths)) {
+    issues.push("memory.source_paths must be an array");
+  }
+  if (Array.isArray(sources) && sources.length > 0 && Array.isArray(legacyPaths) && legacyPaths.length > 0) {
+    issues.push("memory.sources and memory.source_paths must not both be configured");
+  }
   if ((!Array.isArray(sources) || sources.length === 0) &&
       (!Array.isArray(legacyPaths) || legacyPaths.length === 0)) {
     issues.push("memory.sources or memory.source_paths must contain at least one source");
   }
 
+  for (const [index, sourcePath] of (Array.isArray(legacyPaths) ? legacyPaths : []).entries()) {
+    if (!isNonEmptyString(sourcePath)) issues.push(`memory.source_paths[${index}] must be a non-empty string`);
+  }
+
   const ids = new Set();
-  for (const [index, source] of (sources ?? []).entries()) {
+  for (const [index, source] of (Array.isArray(sources) ? sources : []).entries()) {
     const prefix = `memory.sources[${index}]`;
-    if (!source || typeof source !== "object" || Array.isArray(source)) {
+    if (!isObject(source)) {
       issues.push(`${prefix} must be an object`);
       continue;
     }
     for (const field of ["id", "provider", "path"]) {
-      if (typeof source[field] !== "string" || source[field].trim() === "") {
+      if (!isNonEmptyString(source[field])) {
         issues.push(`${prefix}.${field} must be a non-empty string`);
       }
     }
@@ -70,15 +93,18 @@ export function validateConfig(config) {
     if (source.provider && source.provider !== "obsidian" && source.provider !== "jsonl") {
       issues.push(`${prefix}.provider '${source.provider}' is not supported`);
     }
+    if (source.provider === "obsidian") {
+      validateStringArray(source.required_frontmatter, `${prefix}.required_frontmatter`, issues, { optional: true });
+      validateStringArray(source.exclude_directories, `${prefix}.exclude_directories`, issues, { optional: true });
+    }
   }
 
   const localIndex = config.memory?.local_index;
-  if (!localIndex || typeof localIndex !== "object") {
+  if (!isObject(localIndex)) {
     issues.push("memory.local_index must be an object");
   } else {
-    if (typeof localIndex.path !== "string" || localIndex.path.trim() === "") {
-      issues.push("memory.local_index.path must be a non-empty string");
-    }
+    if (localIndex.provider !== "embedded-json") issues.push("memory.local_index.provider must be 'embedded-json'");
+    if (!isNonEmptyString(localIndex.path)) issues.push("memory.local_index.path must be a non-empty string");
     if (localIndex.git_tracked !== false) {
       issues.push("memory.local_index.git_tracked must be false");
     }
@@ -101,4 +127,19 @@ export function getMemorySources(config) {
 
 export function resolveProjectPath(projectRoot, targetPath) {
   return path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(projectRoot, targetPath);
+}
+
+function isObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+function validateStringArray(value, field, issues, { optional = false } = {}) {
+  if (value === undefined && optional) return;
+  if (!Array.isArray(value) || value.length === 0 || value.some((item) => !isNonEmptyString(item))) {
+    issues.push(`${field} must be a non-empty array of non-empty strings`);
+  }
 }

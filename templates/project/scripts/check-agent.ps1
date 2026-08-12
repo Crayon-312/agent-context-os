@@ -318,10 +318,34 @@ function Test-ObsidianSource {
             }
         }
 
-        foreach ($Field in @($Source.required_frontmatter)) {
+        $RequiredFrontmatter = New-Object System.Collections.Generic.List[string]
+        foreach ($Field in @("id", "type", "status", "summary")) {
+            $RequiredFrontmatter.Add($Field) | Out-Null
+        }
+        if ($Source.PSObject.Properties.Name -contains "required_frontmatter" -and $Source.required_frontmatter) {
+            foreach ($Field in @($Source.required_frontmatter)) {
+                if (-not $RequiredFrontmatter.Contains([string]$Field)) {
+                    $RequiredFrontmatter.Add([string]$Field) | Out-Null
+                }
+            }
+        }
+        foreach ($Field in $RequiredFrontmatter.ToArray()) {
             if (-not $Frontmatter.ContainsKey([string]$Field) -or [string]::IsNullOrWhiteSpace([string]$Frontmatter[[string]$Field])) {
                 Add-Issue "$($File.FullName) missing required frontmatter '$Field'"
             }
+        }
+
+        if ($Frontmatter.ContainsKey("type") -and @("project_fact", "business_rule", "interaction_rule", "architecture_rule", "implementation_note", "known_issue", "decision", "open_question") -notcontains [string]$Frontmatter.type) {
+            Add-Issue "$($File.FullName) has invalid type '$($Frontmatter.type)'"
+        }
+        if ($Frontmatter.ContainsKey("status") -and @("current", "draft", "assumption", "stale", "deprecated") -notcontains [string]$Frontmatter.status) {
+            Add-Issue "$($File.FullName) has invalid status '$($Frontmatter.status)'"
+        }
+        if ($Frontmatter.ContainsKey("confidence") -and @("high", "medium", "low") -notcontains [string]$Frontmatter.confidence) {
+            Add-Issue "$($File.FullName) has invalid confidence '$($Frontmatter.confidence)'"
+        }
+        if ($Frontmatter.ContainsKey("last_verified")) {
+            Test-DateString ([string]$Frontmatter.last_verified) "$($File.FullName) last_verified"
         }
 
         if ($Frontmatter.ContainsKey("id") -and -not [string]::IsNullOrWhiteSpace([string]$Frontmatter.id)) {
@@ -330,6 +354,67 @@ function Test-ObsidianSource {
             }
             $SeenIds[$Frontmatter.id] = $true
         }
+    }
+}
+
+function Test-LocalIndexProtection {
+    param([object]$LocalIndex)
+
+    if (-not $LocalIndex -or [string]::IsNullOrWhiteSpace([string]$LocalIndex.path)) {
+        return
+    }
+    if ($AllowPlaceholders -and [string]$LocalIndex.path -match "<[^>]+>") {
+        return
+    }
+
+    $ConfiguredPath = Resolve-ConfiguredPath ([string]$LocalIndex.path)
+    if (-not [System.IO.Path]::HasExtension($ConfiguredPath)) {
+        $ConfiguredPath = Join-Path $ConfiguredPath "index.json"
+    }
+
+    $PreviousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $GitRootOutput = & git -C $Root rev-parse --show-toplevel 2>$null
+        $GitRootExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($GitRootExitCode -ne 0 -or [string]::IsNullOrWhiteSpace([string]$GitRootOutput)) {
+        return
+    }
+
+    $GitRoot = [System.IO.Path]::GetFullPath(([string]$GitRootOutput).Trim()).TrimEnd('\', '/')
+    $FullIndexPath = [System.IO.Path]::GetFullPath($ConfiguredPath)
+    if (-not $FullIndexPath.StartsWith($GitRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+
+    $RelativePath = $FullIndexPath.Substring($GitRoot.Length).TrimStart('\', '/').Replace('\', '/')
+    $ErrorActionPreference = "Continue"
+    try {
+        & git -C $GitRoot ls-files --error-unmatch -- $RelativePath *> $null
+        $TrackedExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($TrackedExitCode -eq 0) {
+        Add-Issue "local index path is tracked by Git: $FullIndexPath"
+        return
+    }
+
+    $ErrorActionPreference = "Continue"
+    try {
+        & git -C $GitRoot check-ignore --quiet --no-index -- $RelativePath *> $null
+        $IgnoredExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $PreviousErrorActionPreference
+    }
+    if ($IgnoredExitCode -ne 0) {
+        Add-Issue "local index path is not ignored by Git: $FullIndexPath"
     }
 }
 
@@ -365,6 +450,10 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
             if (-not ($Config.PSObject.Properties.Name -contains $Field)) {
                 Add-Issue ".agent-context/config.json missing field '$Field'"
             }
+        }
+
+        if ($Config.schema_version -notin @(1, 2)) {
+            Add-Issue "schema_version must be 1 or 2"
         }
 
         Test-NonPlaceholder ([string]$Config.project_id) "project_id"
@@ -447,6 +536,10 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
 
                 Test-NonPlaceholder ([string]$Config.memory.local_index.provider) "memory.local_index.provider"
                 Test-NonPlaceholder ([string]$Config.memory.local_index.path) "memory.local_index.path"
+                if ($Config.memory.local_index.provider -ne "embedded-json") {
+                    Add-Issue "memory.local_index.provider must be 'embedded-json'"
+                }
+                Test-LocalIndexProtection $Config.memory.local_index
             }
         }
 

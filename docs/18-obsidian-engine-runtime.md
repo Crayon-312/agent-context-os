@@ -19,7 +19,7 @@ node <Engine路径>/engine/bin/agent-context.js index --project <项目路径>
 node <Engine路径>/engine/bin/agent-context.js search "<查询>" --project <项目路径>
 ```
 
-所有命令支持 `--json` 输出结构化结果。`search` 还支持 `--limit`、`--type` 和 `--status` 过滤。
+所有命令支持 `--json` 输出结构化结果。`validate` 会实际读取并校验所有知识源及索引路径，但不会写入索引；`search` 还支持 `--limit`、`--type` 和 `--status` 过滤。
 
 ## 配置契约
 
@@ -43,7 +43,7 @@ node <Engine路径>/engine/bin/agent-context.js search "<查询>" --project <项
 }
 ```
 
-`path` 相对路径以用户项目根目录为基准，也允许绝对路径。Engine 兼容旧 `memory.source_paths`，但新项目应使用 `memory.sources[]`。
+`path` 相对路径以用户项目根目录为基准，也允许绝对路径。Engine 兼容旧 `memory.source_paths`，但新项目应使用 `memory.sources[]`。`id`、`type`、`status` 和 `summary` 是不可取消的核心必填字段，`required_frontmatter` 只能追加其他必填字段。
 
 ## Obsidian 知识契约
 
@@ -68,9 +68,11 @@ Engine 会忽略 `.obsidian`、`.git`、`.trash` 和配置中的排除目录，�
 
 - Engine 对 Vault 只读，不自动创建或修改 Markdown。
 - 本地索引必须被 Git 排除，可随时删除重建。
+- 仓库内索引路径必须真实命中 Git ignore 规则且不得是已跟踪文件；仓库外路径可作为本机缓存。
 - 不得把账号、密钥、token、cookie 或真实隐私数据写入 Vault 或索引。
 - 检索结果只用于定位上下文；高风险结论必须回到代码、测试、知识原文或用户确认验证。
 - 重复知识 ID 会使索引失败，缺少必需 Frontmatter 的文件会被报告并跳过。
+- 任一知识源校验失败时，`validate` 和 `index` 都返回失败；`index` 不会覆盖已有的有效索引。
 
 ## 当前限制
 
