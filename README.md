@@ -1,14 +1,14 @@
 # Agent Context OS
 
-**AI Agent 协助开发通用蓝图。**
+**以 Obsidian 为知识库的 AI Agent 协作开发引擎。**
 
-Agent Context OS is a universal blueprint for AI-agent-assisted software development.
+Agent Context OS is an executable context engine and reusable blueprint for AI-agent-assisted software development.
 
-它帮助软件项目把“协作引擎规则”和“项目业务记忆”拆开：协作引擎集中管理 Agent 如何工作，用户项目只保留极薄入口和可审查的项目记忆源，本地检索索引用于节约 Token 并快速定位真实上下文。
+它把“协作引擎规则”和“项目业务知识”拆开：Engine 集中管理上下文采集、索引、检索和 Agent 工作规则；Obsidian Vault 保存团队可审查的项目知识；用户项目只保留极薄入口和配置。
 
 ## 定位
 
-Agent Context OS 不是某个项目的文档库，也不是某种技术栈的开发规范。它是一套协作引擎蓝图，用于管理：
+Agent Context OS 不是某个项目的文档库，也不是某种技术栈的开发规范。它是一套带可运行 MVP 的协作引擎，用于管理：
 
 - Agent 进入项目的入口规则
 - 上下文路由和 Token 成本控制
@@ -26,11 +26,23 @@ Agent Context OS 不是某个项目的文档库，也不是某种技术栈的开
 
 | 层 | 负责内容 | 存放位置 |
 |---|---|---|
-| 协作引擎层 | 任务拆解、上下文路由、执行门禁、质量规则 | Agent Context OS 本体或版本化引擎包 |
-| 项目记忆源 | 业务背景、业务规则、交互习惯、开发习惯、历史坑、证据路径 | 用户项目中的小型可审查文件 |
-| 本地检索索引 | 向量、全文索引、关键词索引和过滤元数据 | 用户机器本地缓存或 `.agent-context/local-index/` |
+| 协作引擎层 | 知识采集、索引、检索、任务拆解、上下文路由、执行门禁 | 本仓库 `engine/` 或版本化引擎包 |
+| 项目知识库 | 业务背景、业务规则、交互习惯、开发习惯、历史坑、证据路径 | 默认使用 Obsidian Vault；JSONL 作为兼容 provider |
+| 本地检索索引 | 规范化知识、关键词和过滤元数据 | 用户机器本地缓存或 `.agent-context/local-index/` |
 
-原则是：**Git 管事实，本地索引管搜索。**
+原则是：**Obsidian + Git 管事实，Engine 本地索引管搜索。**
+
+## 可运行 MVP
+
+运行环境要求 Node.js 20+，无需安装第三方依赖：
+
+```powershell
+node engine/bin/agent-context.js validate --project examples/obsidian-project
+node engine/bin/agent-context.js index --project examples/obsidian-project
+node engine/bin/agent-context.js search "库存校验" --project examples/obsidian-project
+```
+
+当前 Engine 只读知识库，支持 Obsidian Markdown、约定的 Frontmatter、双向链接提取、JSON 本地索引、关键词检索以及类型和状态过滤。详见 `docs/18-obsidian-engine-runtime.md`。
 
 ## 设计原则
 
@@ -67,7 +79,11 @@ agent-context-os/
 │  ├─ 14-retrieval-memory-store.md
 │  ├─ 15-release-readiness-review.md
 │  ├─ 16-plan-execution-ledger.md
-│  └─ 17-thin-launcher-runtime.md
+│  ├─ 17-thin-launcher-runtime.md
+│  └─ 18-obsidian-engine-runtime.md
+├─ engine/
+│  ├─ bin/
+│  └─ src/
 ├─ templates/
 │  ├─ project/
 │  ├─ business/
@@ -83,11 +99,9 @@ agent-context-os/
 <项目根目录>/
 ├─ AGENTS.md
 ├─ .agent-context/
-│  ├─ config.json
-│  └─ memory-sources/
-│     ├─ README.md
-│     ├─ _example.jsonl.example
-│     └─ memory-*.jsonl
+│  └─ config.json
+├─ <Obsidian Vault>/
+│  └─ <项目知识>.md
 └─ scripts/
    └─ check-agent.ps1
 ```
@@ -97,18 +111,18 @@ agent-context-os/
 ## 快速接入：新项目
 
 1. 复制 `templates/project/` 到项目根目录。
-2. 替换 `.agent-context/config.json` 中的 `<项目ID>`、`<项目名>`、`<引擎版本>`、`<本机引擎路径或包名>` 和 `<验证命令>`。
-3. 在 `.agent-context/memory-sources/` 中用 `memory-*.jsonl` 维护团队共享的项目记忆源；`_example.jsonl.example` 只作格式参考。
+2. 替换 `.agent-context/config.json` 中的项目、引擎、Obsidian Vault 路径和验证命令。
+3. 在 Obsidian Vault 中用带 Frontmatter 的 Markdown 维护项目知识；无法使用 Obsidian 时可配置 JSONL provider。
 4. 确认 `.agent-context/local-index/`、`.agent-context/index/` 和缓存文件不进入 Git。
 5. 执行 `scripts/check-agent.ps1`。
-6. 后续 Agent 任务从 `AGENTS.md` 和 `.agent-context/config.json` 开始，再由当前引擎按任务动态加载规则。
+6. 执行 Engine 的 `validate`、`index` 和 `search` 命令验证完整闭环。
 
 ## 快速接入：老项目
 
 老项目升级默认走原地换芯：
 
 1. 识别旧协作引擎文件和其中混入的项目记忆。
-2. 将仍有效的业务背景、开发习惯、交互习惯和历史坑迁入 `.agent-context/memory-sources/memory-*.jsonl`。
+2. 将仍有效的业务背景、开发习惯、交互习惯和历史坑迁入 Obsidian Vault，并补齐约定的 Frontmatter。
 3. 清退旧协作引擎文件，不长期保留两套协作结构。
 4. 写入新版极薄入口和 `.agent-context/config.json`。
 5. 重建本地检索索引。

@@ -8,14 +8,14 @@ $ErrorActionPreference = "Stop"
 $Issues = New-Object System.Collections.Generic.List[string]
 $SensitivePatterns = @(
     "(?i)\b(api[_-]?key|token|access[_-]?token|refresh[_-]?token|secret|password|passwd|pwd|credential|private[_-]?key|cookie|session[_-]?id)\b",
-    "\u8d26\u53f7",
-    "\u5bc6\u7801",
-    "\u5bc6\u94a5",
-    "\u51ed\u636e",
-    "\u79c1\u94a5",
-    "\u8bbf\u95ee\u4ee4\u724c",
-    "\u5237\u65b0\u4ee4\u724c",
-    "\u771f\u5b9e\u9690\u79c1"
+    "账号",
+    "密码",
+    "密钥",
+    "凭据",
+    "私钥",
+    "访问令牌",
+    "刷新令牌",
+    "真实隐私"
 )
 
 function Add-Issue {
@@ -246,6 +246,93 @@ function Get-MemorySourceFiles {
     return $Files.ToArray()
 }
 
+function Get-ConfiguredMemorySources {
+    param([object]$MemoryConfig)
+
+    $Sources = New-Object System.Collections.Generic.List[object]
+    if ($MemoryConfig -and $MemoryConfig.sources) {
+        foreach ($Source in @($MemoryConfig.sources)) {
+            $Sources.Add($Source) | Out-Null
+        }
+    }
+    elseif ($MemoryConfig -and $MemoryConfig.source_paths) {
+        $Index = 0
+        foreach ($SourcePath in @($MemoryConfig.source_paths)) {
+            $Index++
+            $Sources.Add([pscustomobject]@{
+                id = "legacy-jsonl-$Index"
+                provider = "jsonl"
+                path = [string]$SourcePath
+            }) | Out-Null
+        }
+    }
+
+    return $Sources.ToArray()
+}
+
+function Resolve-ConfiguredPath {
+    param([string]$ConfiguredPath)
+
+    if ([System.IO.Path]::IsPathRooted($ConfiguredPath)) {
+        return [System.IO.Path]::GetFullPath($ConfiguredPath)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $Root $ConfiguredPath))
+}
+
+function Test-ObsidianSource {
+    param([object]$Source)
+
+    $ConfiguredPath = [string]$Source.path
+    if ($ConfiguredPath -match "<[^>]+>") {
+        if (-not $AllowPlaceholders) {
+            Add-Issue "memory.sources.path still contains a placeholder"
+        }
+        return
+    }
+
+    $VaultPath = Resolve-ConfiguredPath $ConfiguredPath
+    if (-not (Test-Path -LiteralPath $VaultPath -PathType Container)) {
+        Add-Issue "Obsidian source '$($Source.id)' vault not found: $VaultPath"
+        return
+    }
+
+    $MarkdownFiles = @(Get-ChildItem -LiteralPath $VaultPath -Recurse -File -Filter "*.md" | Where-Object {
+        $_.FullName -notmatch "[\\/](\.obsidian|\.git|\.trash)[\\/]"
+    })
+    if ($MarkdownFiles.Count -eq 0) {
+        Add-Issue "Obsidian source '$($Source.id)' did not match any Markdown file"
+        return
+    }
+
+    $SeenIds = @{}
+    foreach ($File in $MarkdownFiles) {
+        $Content = Get-Content -LiteralPath $File.FullName -Raw -Encoding UTF8
+        Test-NoSensitiveText $Content $File.FullName
+        $Frontmatter = @{}
+        if ($Content -match "(?s)^\uFEFF?---\r?\n(.*?)\r?\n---(?:\r?\n|$)") {
+            foreach ($Line in ($Matches[1] -split "\r?\n")) {
+                if ($Line -match "^([A-Za-z0-9_-]+):\s*(.*)$") {
+                    $Frontmatter[$Matches[1]] = $Matches[2].Trim().Trim('"', "'")
+                }
+            }
+        }
+
+        foreach ($Field in @($Source.required_frontmatter)) {
+            if (-not $Frontmatter.ContainsKey([string]$Field) -or [string]::IsNullOrWhiteSpace([string]$Frontmatter[[string]$Field])) {
+                Add-Issue "$($File.FullName) missing required frontmatter '$Field'"
+            }
+        }
+
+        if ($Frontmatter.ContainsKey("id") -and -not [string]::IsNullOrWhiteSpace([string]$Frontmatter.id)) {
+            if ($SeenIds.ContainsKey($Frontmatter.id)) {
+                Add-Issue "Obsidian source '$($Source.id)' has duplicate id '$($Frontmatter.id)'"
+            }
+            $SeenIds[$Frontmatter.id] = $true
+        }
+    }
+}
+
 try {
     $Root = (Resolve-Path -LiteralPath $ProjectRoot).Path
 }
@@ -256,8 +343,6 @@ catch {
 
 Test-RequiredFile "AGENTS.md"
 Test-RequiredFile ".agent-context/config.json"
-Test-RequiredDirectory ".agent-context/memory-sources"
-Test-RequiredFile ".agent-context/memory-sources/README.md"
 Test-RequiredFile ".gitignore"
 
 Test-ContainsText "AGENTS.md" ".agent-context/config.json"
@@ -303,22 +388,45 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
         }
 
         if ($Config.memory) {
-            if (-not ($Config.memory.PSObject.Properties.Name -contains "source_paths")) {
-                Add-Issue ".agent-context/config.json memory missing field 'source_paths'"
+            $HasSources = $Config.memory.PSObject.Properties.Name -contains "sources"
+            $HasLegacyPaths = $Config.memory.PSObject.Properties.Name -contains "source_paths"
+            if (-not $HasSources -and -not $HasLegacyPaths) {
+                Add-Issue ".agent-context/config.json memory missing field 'sources'"
             }
-            elseif ($Config.memory.source_paths.Count -eq 0) {
-                Add-Issue "memory.source_paths must not be empty"
-            }
-            else {
-                foreach ($SourcePath in @($Config.memory.source_paths)) {
-                    Test-NonPlaceholder ([string]$SourcePath) "memory.source_paths"
 
-                    if ([string]$SourcePath -notlike "*.jsonl") {
-                        Add-Issue "memory.source_paths entries must target JSONL files"
+            $ConfiguredSources = @(Get-ConfiguredMemorySources $Config.memory)
+            if ($ConfiguredSources.Count -eq 0) {
+                Add-Issue "memory.sources must not be empty"
+            }
+
+            $SourceIds = @{}
+            foreach ($Source in $ConfiguredSources) {
+                foreach ($Field in @("id", "provider", "path")) {
+                    if (-not ($Source.PSObject.Properties.Name -contains $Field)) {
+                        Add-Issue "memory source missing field '$Field'"
                     }
+                    else {
+                        Test-NonPlaceholder ([string]$Source.$Field) "memory.sources.$Field"
+                    }
+                }
 
-                    if ([string]$SourcePath -like "*_example*") {
-                        Add-Issue "memory.source_paths must not include example files"
+                if ($Source.id) {
+                    if ($SourceIds.ContainsKey([string]$Source.id)) {
+                        Add-Issue "memory source id '$($Source.id)' must be unique"
+                    }
+                    $SourceIds[[string]$Source.id] = $true
+                }
+
+                if ($Source.provider -and @("obsidian", "jsonl") -notcontains [string]$Source.provider) {
+                    Add-Issue "memory source provider '$($Source.provider)' is not supported"
+                }
+
+                if ($Source.provider -eq "jsonl") {
+                    if ([string]$Source.path -notlike "*.jsonl") {
+                        Add-Issue "jsonl memory source paths must target JSONL files"
+                    }
+                    if ([string]$Source.path -like "*_example*") {
+                        Add-Issue "jsonl memory sources must not include example files"
                     }
                 }
             }
@@ -363,18 +471,23 @@ if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
     }
 }
 
-$MemoryDir = Join-Path $Root ".agent-context/memory-sources"
-if (Test-Path -LiteralPath $MemoryDir -PathType Container) {
-    $JsonlFiles = @()
-    if ($Config -and $Config.memory -and $Config.memory.source_paths) {
-        $JsonlFiles = @(Get-MemorySourceFiles $Config.memory.source_paths)
-    }
+if ($Config -and $Config.memory) {
+    foreach ($Source in @(Get-ConfiguredMemorySources $Config.memory)) {
+        if ($Source.provider -eq "obsidian") {
+            Test-ObsidianSource $Source
+            continue
+        }
 
-    if ($JsonlFiles.Count -eq 0 -and -not $AllowPlaceholders) {
-        Add-Issue "memory.source_paths did not match any JSONL memory source"
-    }
+        if ($Source.provider -ne "jsonl") {
+            continue
+        }
 
-    foreach ($File in $JsonlFiles) {
+        $JsonlFiles = @(Get-MemorySourceFiles @($Source.path))
+        if ($JsonlFiles.Count -eq 0 -and -not $AllowPlaceholders) {
+            Add-Issue "JSONL memory source '$($Source.id)' did not match any file"
+        }
+
+        foreach ($File in $JsonlFiles) {
         if ($File.Name.StartsWith("_")) {
             Add-Issue "$($File.FullName) is an example or reserved file and must not be an active memory source"
             continue
@@ -394,6 +507,7 @@ if (Test-Path -LiteralPath $MemoryDir -PathType Container) {
 
         if ($NonEmptyLineCount -eq 0 -and -not $AllowPlaceholders) {
             Add-Issue "$($File.FullName) must contain at least one memory record"
+        }
         }
     }
 }

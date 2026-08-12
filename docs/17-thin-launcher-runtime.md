@@ -15,7 +15,7 @@
 | 层 | 作用 | 推荐位置 |
 |---|---|---|
 | 协作引擎层 | 任务拆解、上下文路由、S0-S3 门禁、质量规则、多 Agent 策略 | Agent Context OS 本体或版本化引擎包 |
-| 项目记忆源 | 业务背景、业务规则、开发习惯、交互习惯、历史坑、证据路径 | 用户项目中的小型 JSONL / Markdown 事实源 |
+| 项目记忆源 | 业务背景、业务规则、开发习惯、交互习惯、历史坑、证据路径 | 默认 Obsidian Vault；JSONL 为兼容 provider |
 | 本地检索索引 | 向量、全文索引、关键词索引、过滤元数据 | 用户机器本地缓存目录或 `.agent-context/local-index/` |
 
 ## 用户项目默认结构
@@ -24,11 +24,9 @@
 <项目根目录>/
 ├─ AGENTS.md
 ├─ .agent-context/
-│  ├─ config.json
-│  └─ memory-sources/
-│     ├─ README.md
-│     ├─ _example.jsonl.example
-│     └─ memory-*.jsonl
+│  └─ config.json
+├─ <Obsidian Vault>/
+│  └─ <项目知识>.md
 └─ scripts/
    └─ check-agent.ps1
 ```
@@ -53,7 +51,7 @@
 
 ## 记忆源与索引
 
-项目记忆源是团队共享事实，应进入 Git（版本控制工具），因为它小、可审查、可合并、可追溯。正式记忆源默认命名为 `memory-*.jsonl`；示例文件只保留为 `_example.jsonl.example`，不得纳入 `source_paths`。
+项目记忆源是团队共享事实。新项目默认使用带 Frontmatter 的 Obsidian Markdown，并通过 Git（版本控制工具）或团队批准的同步方式保持可审查、可追溯。JSONL provider 用于兼容旧项目，其示例文件不得作为正式数据源。
 
 本地检索索引是查询加速结构，不应进入 Git。它可以由项目记忆源、代码摘要和证据路径重新生成。
 
@@ -89,3 +87,4 @@ Agent 阅读真实代码、测试或文档
 - 检索命中只是线索，高风险内容必须回到代码、测试、文档或用户确认验证。
 - 本地索引目录必须被 `.gitignore` 排除。
 - 同一事实只能有一个当前记忆源；过期内容标记为 `stale` 或 `deprecated`。
+- Engine 首版只读 Obsidian Vault，不自动改写用户知识；稳定事实的写回必须经过 Agent 任务门禁和审查。

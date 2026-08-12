@@ -1,0 +1,17 @@
+{
+  "name": "agent-context-os",
+  "version": "0.1.0",
+  "description": "Obsidian-backed context engine for AI-assisted development",
+  "type": "module",
+  "bin": {
+    "agent-context": "engine/bin/agent-context.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check engine/bin/agent-context.js && node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

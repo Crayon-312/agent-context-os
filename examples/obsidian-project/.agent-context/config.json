@@ -1,25 +1,20 @@
 {
   "schema_version": 2,
-  "project_id": "<项目ID>",
-  "project_name": "<项目名>",
+  "project_id": "example-obsidian-project",
+  "project_name": "Obsidian 项目示例",
   "engine": {
     "name": "Agent Context OS",
     "mode": "thin-launcher",
-    "version": "<引擎版本>",
-    "source": "<本机引擎路径或包名>"
+    "version": "0.1.0",
+    "source": "../.."
   },
   "memory": {
     "sources": [
       {
         "id": "project-vault",
         "provider": "obsidian",
-        "path": "<Obsidian Vault 路径>",
-        "required_frontmatter": [
-          "id",
-          "type",
-          "status",
-          "summary"
-        ]
+        "path": "knowledge",
+        "required_frontmatter": ["id", "type", "status", "summary"]
       }
     ],
     "local_index": {
@@ -30,8 +25,6 @@
   },
   "quality": {
     "check_command": "scripts/check-agent.ps1",
-    "validation_commands": [
-      "<验证命令>"
-    ]
+    "validation_commands": ["node --test"]
   }
 }

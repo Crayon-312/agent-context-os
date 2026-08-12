@@ -120,13 +120,20 @@ function New-ProjectFixture {
     $Config.project_name = $ProjectName
     $Config.engine.version = "1.0.0"
     $Config.engine.source = "agent-context-os"
-    $Config.memory.source_paths = @(".agent-context/memory-sources/memory-*.jsonl")
-    $Config.memory.local_index.provider = "embedded-vector-index"
+    $Config.memory.sources = @([pscustomobject]@{
+        id = "project-vault"
+        provider = "obsidian"
+        path = "knowledge"
+        required_frontmatter = @("id", "type", "status", "summary")
+    })
+    $Config.memory.local_index.provider = "embedded-json"
     $Config.memory.local_index.path = ".agent-context/local-index"
     $Config.quality.validation_commands = @("scripts/check-agent.ps1")
     $Config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
 
-    $MemoryPath = Join-Path $FixtureRoot ".agent-context/memory-sources/memory-bootstrap.jsonl"
+    $KnowledgePath = Join-Path $FixtureRoot "knowledge"
+    New-Item -ItemType Directory -Path $KnowledgePath | Out-Null
+    $MemoryPath = Join-Path $KnowledgePath "bootstrap.md"
     Set-Content -LiteralPath $MemoryPath -Value $MemoryLine -Encoding UTF8
 
     return $FixtureRoot
@@ -145,17 +152,25 @@ try {
     Invoke-CheckScript "scripts/check-agent-drift.ps1"
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", "templates/project") "placeholder"
 
-    $ValidMemory = '{"id":"mem-20260720-001","status":"current","type":"business_rule","scope":["upgrade"],"summary":"Thin launcher is the only project agent entry.","source":{"kind":"user_confirmed","ref":"AGENTS.md","date":"2026-07-20"},"evidence":["AGENTS.md"],"confidence":"high","last_verified":"2026-07-20","tags":["upgrade"]}'
+    $NodeOutput = & node --test 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Add-Issue "Engine tests failed: node --test"
+        foreach ($Line in $NodeOutput) {
+            Add-Issue "  $Line"
+        }
+    }
+
+    $ValidMemory = "---`nid: mem-20260720-001`nstatus: current`ntype: business_rule`nsummary: Thin launcher is the only project agent entry.`n---`n# Thin launcher"
     $ValidFixture = New-ProjectFixture "valid-project" "Valid Project" $ValidMemory
     $TempFixtures.Add($ValidFixture) | Out-Null
     Invoke-CheckScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $ValidFixture)
 
-    $SensitiveMemory = '{"id":"mem-20260720-002","status":"current","type":"business_rule","scope":["upgrade"],"summary":"Do not write token values into memory sources.","source":{"kind":"user_confirmed","ref":"AGENTS.md","date":"2026-07-20"},"evidence":["AGENTS.md"],"confidence":"high","last_verified":"2026-07-20","tags":["upgrade"]}'
+    $SensitiveMemory = "---`nid: mem-20260720-002`nstatus: current`ntype: business_rule`nsummary: Do not write token values into memory sources.`n---`n# Sensitive"
     $SensitiveFixture = New-ProjectFixture "sensitive-project" "Sensitive Project" $SensitiveMemory
     $TempFixtures.Add($SensitiveFixture) | Out-Null
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $SensitiveFixture) "sensitive marker"
 
-    $ChineseSensitiveMemory = '{"id":"mem-20260720-003","status":"current","type":"business_rule","scope":["upgrade"],"summary":"Do not write \u5bc6\u7801 into memory sources.","source":{"kind":"user_confirmed","ref":"AGENTS.md","date":"2026-07-20"},"evidence":["AGENTS.md"],"confidence":"high","last_verified":"2026-07-20","tags":["upgrade"]}'
+    $ChineseSensitiveMemory = "---`nid: mem-20260720-003`nstatus: current`ntype: business_rule`nsummary: Do not write 密码 into memory sources.`n---`n# Sensitive"
     $ChineseSensitiveFixture = New-ProjectFixture "chinese-sensitive-project" "Chinese Sensitive Project" $ChineseSensitiveMemory
     $TempFixtures.Add($ChineseSensitiveFixture) | Out-Null
     Invoke-ExpectedFailureScript "scripts/check-agent-project.ps1" @("-ProjectRoot", $ChineseSensitiveFixture) "sensitive marker"

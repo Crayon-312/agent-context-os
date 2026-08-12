@@ -29,13 +29,28 @@
 
 ## 项目记忆源
 
-项目记忆源是团队共享事实，推荐放在：
+项目记忆源是团队共享事实，新项目默认放在团队管理的 Obsidian Vault 中。无法使用 Obsidian 时，可以兼容放在：
 
 ```text
 .agent-context/memory-sources/
 ```
 
-它应使用小型 Markdown 或 JSONL 文件，进入 Git（版本控制工具），便于评审、合并、回滚和审计。
+Obsidian 记忆源使用带 Frontmatter 的 Markdown 文件，并应通过 Git（版本控制工具）或团队批准的同步方式实现评审、合并、回滚和审计。JSONL 仅作为兼容 provider。
+
+最小 Obsidian Frontmatter：
+
+```yaml
+---
+id: mem-YYYYMMDD-001
+status: current
+type: business_rule
+scope: [<模块名>, <业务对象>]
+tags: [<标签>]
+summary: <一句话摘要>
+confidence: high
+last_verified: YYYY-MM-DD
+---
+```
 
 最小 JSONL 记录：
 

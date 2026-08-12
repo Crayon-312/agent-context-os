@@ -100,6 +100,16 @@ $RequiredFiles = @(
     "docs/15-release-readiness-review.md",
     "docs/16-plan-execution-ledger.md",
     "docs/17-thin-launcher-runtime.md",
+    "docs/18-obsidian-engine-runtime.md",
+    "engine/bin/agent-context.js",
+    "engine/src/cli.js",
+    "engine/src/config.js",
+    "engine/src/frontmatter.js",
+    "engine/src/index-store.js",
+    "engine/src/search.js",
+    "engine/src/providers/obsidian.js",
+    "engine/src/providers/jsonl.js",
+    "package.json",
     "templates/project/.gitignore",
     "templates/project/.gitattributes",
     "templates/project/AGENTS.md",
@@ -152,23 +162,29 @@ Test-ContainsText "docs/15-release-readiness-review.md" "RR-001"
 Test-ContainsText "docs/16-plan-execution-ledger.md" "confirmed"
 Test-ContainsText "docs/17-thin-launcher-runtime.md" "Memory Source"
 Test-ContainsText "docs/17-thin-launcher-runtime.md" "local-index"
+Test-ContainsText "docs/18-obsidian-engine-runtime.md" "provider"
+Test-ContainsText "docs/18-obsidian-engine-runtime.md" "Frontmatter"
+Test-ContainsText "engine/src/providers/obsidian.js" ".obsidian"
+Test-ContainsText "engine/src/index-store.js" "buildIndex"
+Test-ContainsText "engine/src/search.js" "searchIndex"
+Test-ContainsText "package.json" "node --test"
 Test-ContainsText "templates/project/.gitattributes" "*.ps1 text eol=crlf"
 Test-ContainsText "templates/project/.gitignore" ".agent-context/local-index/"
 Test-ContainsText "templates/project/.gitignore" ".agent-context/cache/"
 Test-ContainsText "templates/project/AGENTS.md" ".agent-context/config.json"
 Test-ContainsText "templates/project/AGENTS.md" "local-index"
 Test-ContainsText "templates/project/.agent-context/config.json" "thin-launcher"
-Test-ContainsText "templates/project/.agent-context/config.json" "source_paths"
-Test-ContainsText "templates/project/.agent-context/config.json" "memory-*.jsonl"
+Test-ContainsText "templates/project/.agent-context/config.json" "sources"
+Test-ContainsText "templates/project/.agent-context/config.json" "obsidian"
 Test-ContainsText "templates/project/.agent-context/config.json" "git_tracked"
 Test-ContainsText "templates/project/.agent-context/memory-sources/README.md" "JSONL"
 Test-ContainsText "templates/project/.agent-context/memory-sources/README.md" "_example.jsonl.example"
 Test-ContainsText "templates/project/.agent-context/memory-sources/_example.jsonl.example" "mem-YYYYMMDD-001"
 Test-ContainsText "templates/project/scripts/check-agent.ps1" "local_index.git_tracked"
 Test-ContainsText "templates/project/scripts/check-agent.ps1" "SensitivePatterns"
-Test-ContainsText "templates/project/scripts/check-agent.ps1" "memory.source_paths did not match"
+Test-ContainsText "templates/project/scripts/check-agent.ps1" "Test-ObsidianSource"
 Test-ContainsText "templates/business/field-rules.md" "field_name"
-Test-ContainsText "templates/reports/implementation-spec.md" "memory-sources"
+Test-ContainsText "templates/reports/implementation-spec.md" "Obsidian Vault"
 Test-ContainsText "templates/reports/task-report.md" "local-index"
 Test-ContainsText "templates/reports/plan-intake-report.md" "discussion_only"
 Test-ContainsText "scripts/check-agent-project.ps1" "check-agent.ps1"

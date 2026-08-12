@@ -1,6 +1,6 @@
 # 项目记忆源
 
-本目录只保存团队可审查、可合并、可追溯的项目记忆源。它不是向量数据库，也不是本地索引目录。
+本目录是 JSONL 兼容记忆源示例。新项目默认使用 `.agent-context/config.json` 指向的 Obsidian Vault；只有无法使用 Obsidian 时才启用本目录中的 JSONL provider。它不是向量数据库，也不是本地索引目录。
 
 ## 存放内容
 
